@@ -1,0 +1,654 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "url": "=https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+        "options": {}
+      },
+      "id": "a492f0ee-a7aa-47ad-8957-d4dc356d46a0",
+      "name": "Parse RSS Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        768,
+        -816
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const db_items = $('Select rows from a table').all().map(item => item.json.news_url);\n\nvar RSS_items = $('Parse RSS Feed').all();\n\nitems = RSS_items.filter(i =>\n  !db_items.includes(i.json.guid.toLowerCase().trim())\n);\n\nif (!items.length) return [];\n\n// Filter articles with content > 300 chars AND having an image\nconst filtered = items.filter(item => \n    (item.json.content || '').length > 300 && \n    item.json.enclosure && item.json.enclosure.url\n);\n\nif (!filtered.length) return [];\n\n// Sort by isoDate descending (most recent first)\nfiltered.sort((a, b) => new Date(b.json.isoDate) - new Date(a.json.isoDate));\nconst mostRecent = filtered[0].json;\n\n// Use the enclosure image\nconst images = [mostRecent.enclosure.url];\n\n// Return single article\nreturn [{\n  json: {\n    title: mostRecent.title,\n    link: mostRecent.guid,\n    pubDate: mostRecent.isoDate,\n    content: mostRecent.content,\n    images: images\n  }\n}];\n"
+      },
+      "id": "f135b36c-4320-42e1-9a96-96969e89228f",
+      "name": "Get Most Recent Article",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        -816
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.content }}",
+        "options": {
+          "systemMessage": "=You are a news reader assistant reporting live. Summarise the following news directly, 300–350 characters, using clear and factual Indian English. Do NOT include introductions, commentary, greetings, or filler words. Start immediately with the summary content."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1440,
+        -816
+      ],
+      "id": "cea49d49-a42b-4f24-9e36-dc5432f9d26b",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "gemma:2b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        -592
+      ],
+      "id": "159fe23d-9873-48db-a039-d001fa5cea91",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "91n7NtWZ1glPjoZa",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://video_generation:8080/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"texts\":[\"{{ $('Code in JavaScript').item.json.output }}\"],\n  \"images\":\"{{ $json.images }}\",\n  \"thumbnail\":\"{{ $('Get Most Recent Article').item.json.images[0] }}\"\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3264,
+        -816
+      ],
+      "id": "3239bb86-127d-4423-bb06-6b72c2e888ad",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Get Most Recent Article').item.json.title }}",
+        "regionCode": "IN",
+        "categoryId": "25",
+        "options": {
+          "description": "={{ $('Get Most Recent Article').item.json.title }}\nDisclaimer: This video presents a summarized interpretation of publicly available news from the Times of India RSS feed. The summary is AI-generated for educational and informational purposes only. All rights to the original content belong to the respective news publishers.",
+          "notifySubscribers": true,
+          "privacyStatus": "public",
+          "publicStatsViewable": false,
+          "selfDeclaredMadeForKids": true,
+          "tags": "#BreakingNews, #GlobalNews, #Education, #EdFinance, #EducationFunding, #Shorts"
+        }
+      },
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        3712,
+        -816
+      ],
+      "id": "9f804353-42b0-4407-b5e1-ea1b6b6a3dae",
+      "name": "Upload a video",
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "MLX1zLGrP1QsQSvt",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://video_generation:8080/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ $json.output }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3488,
+        -816
+      ],
+      "id": "9511d2dc-324e-46ea-bb00-110ed4604d7a",
+      "name": "Get video file"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst sanitizedItems = items.map(item => {\n    const newItem = { ...item };\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/['\"‘’“”]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem.json.output) {\n        newItem.json.output = sanitizeText(newItem.json.output);\n      newItem.json.output = newItem.json.output.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem.json.output = removeBeforeColonIfSure(newItem.json.output);\n    }\n\n    return newItem;\n});\n\nreturn sanitizedItems;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -816
+      ],
+      "id": "f647eb64-0431-4e9c-8586-4a3da526cbcb",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://video_generation:8080/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ $('HTTP Request').item.json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3936,
+        -816
+      ],
+      "id": "ab656cbb-8584-4367-a998-f65a64b3adec",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "url": "https://api.openverse.engineering/v1/images",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.extracted }}"
+            },
+            {
+              "name": "page_size",
+              "value": "5"
+            },
+            {
+              "name": "extension",
+              "value": "jpg"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2592,
+        -880
+      ],
+      "id": "5fbbc211-5dd4-4a94-ae68-1f065b6c98b4",
+      "name": "Get Related Images"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Code in JavaScript').item.json.output }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant that provide single search keyword in single word for this user content. "
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2016,
+        -816
+      ],
+      "id": "2a0f0fcd-97bb-4254-a716-c52f5b612eb7",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "gemma:2b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        -592
+      ],
+      "id": "653bbbc4-1607-4452-b09a-92c13b89d9ab",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "91n7NtWZ1glPjoZa",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $input.first().json.output;\nvar match = text.match(/\\*\\*(.*?)\\*\\*/);\n\nvar keyword = \"\";\n\nif (!!match && match.length > 1) {\n  keyword = match[1];\n}\nelse {\n  match = text.match(/\\\"(.*?)\\\"/);\n  if (!!match && match.length > 1) {\n    keyword = match[1];\n  }\n}\nreturn [\n  {\n    json: {\n      extracted: keyword\n    }\n  }\n];;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        -880
+      ],
+      "id": "6c0b698d-2a1a-418d-acc2-0ac6ce2cf3f9",
+      "name": "Code in JavaScript1",
+      "alwaysOutputData": false,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "var images = [];\n\nfor (const item of $input.first().json.results) {\n  if (item.url && item.url.endsWith('.jpg')) {\n    images.push(item.url);\n  }\n}\n\nreturn [\n  {\n    json: {\n      images: images\n    }\n  }\n];;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2816,
+        -880
+      ],
+      "id": "d9a58ba1-2784-43f7-887e-82131fb8022c",
+      "name": "get just image URLS"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "news_articles",
+          "mode": "name"
+        },
+        "limit": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        992,
+        -816
+      ],
+      "id": "2b6a0413-f75f-4884-9551-912f053f21ac",
+      "name": "Select rows from a table",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "NE096mJWWov1mBGd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "news_articles",
+          "mode": "list",
+          "cachedResultName": "news_articles"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "news_url": "={{ $('Get Most Recent Article').item.json.link }}",
+            "published_date": "={{ $('Get Most Recent Article').item.json.pubDate }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "news_url",
+              "displayName": "news_url",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "published_date",
+              "displayName": "published_date",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4160,
+        -816
+      ],
+      "id": "ee28b3ce-267d-45fd-ba1b-967b50be7bfb",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "NE096mJWWov1mBGd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "beb3e52b-cfc4-4c76-9ad5-bbdd06e5d2f6",
+              "leftValue": "={{ $json.images }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3040,
+        -816
+      ],
+      "id": "442c2735-1c7a-4ea5-b4fe-3eb8fe66d7b5",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.filmibeat.com/rss/feeds/bollywood-fb.xml",
+        "options": {}
+      },
+      "id": "da415cae-dd9a-4471-968e-d671e6e7a7b0",
+      "name": "Parse RSS Feed1",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        544,
+        -1136
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 35
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        -816
+      ],
+      "id": "92d4e29d-7ab3-4cfe-85bf-17baba60e99a",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "connections": {
+    "Parse RSS Feed": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Most Recent Article": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Get video file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a video": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get video file": {
+      "main": [
+        [
+          {
+            "node": "Upload a video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Related Images": {
+      "main": [
+        [
+          {
+            "node": "get just image URLS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Get Related Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get just image URLS": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select rows from a table": {
+      "main": [
+        [
+          {
+            "node": "Get Most Recent Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5159ae577e04938c8b1803ae110b16545ed1c2eb0a4a30508be2364c4cf1554e"
+  }
+}
