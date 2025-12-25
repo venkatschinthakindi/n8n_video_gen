@@ -19,16 +19,17 @@ services:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=admin
       - N8N_BASIC_AUTH_PASSWORD=adminpass
+      - N8N_ALLOW_BASH_COMMANDS=true
     depends_on:
       - postgres
       - video-gen
       - ollama
-      - whisper
-      - comfyui
+      # - whisper
+      # - comfyui
       
     volumes:
       - n8n-data:/root/.n8n
-
+      - /var/run/docker.sock:/var/run/docker.sock   # <-- this gives Docker access
   postgres:
     image: postgres:15
     container_name: n8n-postgres
@@ -42,17 +43,28 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: dockerproxy
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
+      CONTAINERS: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ai-slideshow_default
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@admin.com
+  #     PGADMIN_DEFAULT_PASSWORD: admin123
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - postgres
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -71,39 +83,39 @@ services:
     volumes:
       - ollama-data:/root/.ollama
 
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: whisper
-    restart: unless-stopped
-    ports:
-      - "5001:5001"
-    environment:
-      - ASR_MODEL=small
-    deploy:
-      resources:
-        limits:
-          cpus: "1.5"
-          memory: 2G
-    volumes:
-      - whisper-data:/data
+  # whisper:
+  #   image: onerahmet/openai-whisper-asr-webservice:latest
+  #   container_name: whisper
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5001:5001"
+  #   environment:
+  #     - ASR_MODEL=small
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "1.5"
+  #         memory: 2G
+  #   volumes:
+  #     - whisper-data:/data
 
-  comfyui:
-    build:
-      context: ./comfyui
-    container_name: comfyui
-    restart: unless-stopped
-    ports:
-      - "8288:8288"
-    environment:
-      - CUDA_VISIBLE_DEVICES=        # disables GPU
-    deploy:
-      resources:
-        limits:
-          cpus: "3.0"
-          memory: 6G
-    volumes:
-      - comfy-data:/app/ComfyUI
-      - ./comfy-output:/output
+  # comfyui:
+  #   build:
+  #     context: ./comfyui
+  #   container_name: comfyui
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8288:8288"
+  #   environment:
+  #     - CUDA_VISIBLE_DEVICES=        # disables GPU
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "3.0"
+  #         memory: 6G
+  #   volumes:
+  #     - comfy-data:/app/ComfyUI
+  #     - ./comfy-output:/output
 
   video-gen:
     build:
@@ -121,12 +133,12 @@ services:
           memory: 6G
     volumes:
     - ./video_generation_data:/app/output
-  ffmpeg:
-    image: jrottenberg/ffmpeg:6.0-ubuntu
-    container_name: ffmpeg
-    restart: unless-stopped
-    volumes:
-      - ./media:/media
+  # ffmpeg:
+  #   image: jrottenberg/ffmpeg:6.0-ubuntu
+  #   container_name: ffmpeg
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./media:/media
 
 volumes:
   n8n-data:
@@ -134,3 +146,6 @@ volumes:
   ollama-data:
   whisper-data:
   comfy-data:
+networks:
+  ai-slideshow_default:
+    external: true

@@ -15,9 +15,11 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y imagemagick fonts-dejavu-core fonts-dejavu-extra
 
-RUN pip install -r requirements.txt
+RUN pip install --default-timeout=2000 -r requirements.txt
 # RUN pip install moviepy pyttsx3 TTS pillow numpy flask
+RUN pip install pydub
 
 COPY . .
 RUN chmod -R 777 /app

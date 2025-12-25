@@ -4,3 +4,7 @@ pillow
 numpy
 flask
 moviepy
+opencv-python
+imageio[ffmpeg]
+decorator
+tqdm
