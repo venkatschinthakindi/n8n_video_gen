@@ -1,23 +1,24 @@
 {
+  "name": "With Title From AI",
   "nodes": [
     {
       "parameters": {
-        "functionCode": "const db_items = $('Select rows from a table').all().map(item => item.json.news_url);\n\nvar RSS_items = $('Parse RSS Feed').all();\n\nitems = RSS_items.filter(i =>\n  !db_items.includes(i.json.guid.toLowerCase().trim())\n);\n\nif (!items.length) return [];\n\n// Filter articles with content > 300 chars AND having an image\nconst filtered = items.filter(item => \n    (item.json.contentSnippet || '').length > 300 && \n    item.json.link && item.json.link\n);\n\nif (!filtered.length) return [];\n\n// Sort by isoDate descending (most recent first)\nfiltered.sort((a, b) => new Date(b.json.isoDate) - new Date(a.json.isoDate));\nconst mostRecent = filtered[0].json;\n\n// Use the enclosure image\nconst images = [mostRecent.enclosure.url];\n\n// Return single article\nreturn [{\n  json: {\n    title: mostRecent.title,\n    link: mostRecent.guid,\n    pubDate: mostRecent.isoDate,\n    content: mostRecent.contentSnippet,\n    images: images\n  }\n}];\n"
+        "functionCode": "const db_items = $('Select rows from a table').all().map(item => item.json.news_url.toLowerCase());\n\ntry {\n  var RSS_items_p = $('Extract Images (Regex)').all();\n} catch (error) {\n  \n}\ntry {\n  var RSS_items_a = $('Parse RSS Feed').all();\n} catch (error) {\n  \n}\n\nRSS_items = RSS_items_p??RSS_items_a;\n\nconst now = new Date();\nconst items = RSS_items.filter(i => {\n  const guid = i.json.guid?.toLowerCase().trim();\n  const pubDate = new Date(i.json.pubDate);\n  const monthsDiff = (now.getFullYear() - pubDate.getFullYear()) * 12 + (now.getMonth() - pubDate.getMonth());\n  return !db_items.includes(guid) && monthsDiff <= 2;\n});\n\n\nif (!items.length) return [];\n\n// Filter articles with content > 300 chars AND having an image\nconst filtered = items.filter(item => \n    (item.json.contentSnippet || '').length > 50 && \n    item.json.link && item.json.link\n);\n\nif (!filtered.length) return [];\n\n// Sort by isoDate descending (most recent first)\n\nconst mostRecent = filtered.sort((a, b) => new Date(b.json.isoDate) - new Date(a.json.isoDate))[0].json;\n\n// Use the enclosure image\nconst images = (mostRecent?.enclosure?.url??\n  mostRecent.images?.join(\",\"))??\nmostRecent[\"media:content\"]?.$?.url??\"\";\n\nconst domain = mostRecent?.link?.replace(/(^\\w+:|^)\\/\\//, '').split('/')[0];\n\n// Return single article\nreturn [{\n  json: {\n    title: mostRecent.title,\n    link: mostRecent.guid,\n    pubDate: mostRecent.isoDate,\n    content: mostRecent.contentSnippet,\n    images: images,\n    domain: domain\n  }\n}];\n"
       },
-      "id": "0ab351ed-e092-40ec-ac12-234a923f839e",
+      "id": "f3b40b59-3570-4fe8-8002-a8877c405dc5",
       "name": "Get Most Recent Article",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [
-        880,
-        -1088
+        1408,
+        -672
       ],
       "alwaysOutputData": true
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ $('Get Most Recent Article').item.json.content }}",
+        "text": "=“{{ $('Get Most Recent Article').item.json.content }}”",
         "options": {
           "systemMessage": "=You are a news reporter with exceptional talent for delivering entertainment news in a humorous, engaging, and natural style that keeps the audience entertained and hooked — Summarized all within 500 characters ."
         }
@@ -25,32 +26,12 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
       "position": [
-        1328,
-        -1088
+        2752,
+        -592
       ],
-      "id": "9408e6a8-efed-4d99-9c5f-7317b4c621ff",
+      "id": "810d5816-fc7c-4db5-bcc6-d337cd7b9b09",
       "name": "AI Agent",
       "alwaysOutputData": false
-    },
-    {
-      "parameters": {
-        "model": "gemma:2b",
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
-      "typeVersion": 1,
-      "position": [
-        1400,
-        -864
-      ],
-      "id": "8c56baf3-d56b-4140-840d-5fcb8c5f9a38",
-      "name": "Ollama Chat Model",
-      "credentials": {
-        "ollamaApi": {
-          "id": "91n7NtWZ1glPjoZa",
-          "name": "Ollama account"
-        }
-      }
     },
     {
       "parameters": {
@@ -58,17 +39,20 @@
         "url": "http://video_generation:8080/generate",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"texts\":[\"{{ $('Code in JavaScript').item.json.output }}\"],\n  \"images\":\"{{ $json.images }}\",\n  \"thumbnail\":\"{{ $('Get Most Recent Article').item.json.images[0] }}\"\n} ",
-        "options": {}
+        "jsonBody": "={\n  \"texts\":[\"{{ $('Code in JavaScript').item.json.output }}\"],\n  \"images\":\"{{ $('Get Most Recent Article').item.json.images }}\",\n  \"thumbnail\":\"{{ $('Get Most Recent Article').item.json.images[0] }}\",\n  \"thumbnail_text\":\"{{ $('Thumbnail Sentence').item.json.thumbnailTitle }}\",\n\"file_name\":\"{{ $('Thumbnail Sentence').item.json.fileName }}\"\n} ",
+        "options": {
+          "timeout": 6000000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        2416,
-        -1040
+        5600,
+        -592
       ],
-      "id": "6d751093-f019-4e0f-861b-e529f9bd185a",
-      "name": "HTTP Request"
+      "id": "e852750f-4075-405e-810d-76e5138e49ae",
+      "name": "HTTP Request",
+      "retryOnFail": true
     },
     {
       "parameters": {
@@ -76,23 +60,23 @@
         "operation": "upload",
         "title": "={{ $('get just image URLS1').item.json.title }}",
         "regionCode": "IN",
-        "categoryId": "25",
+        "categoryId": "24",
         "options": {
-          "description": "={{ $('get just image URLS1').item.json.title }}\nDisclaimer: This video presents a summarized interpretation of publicly available news from the Times of India RSS feed. The summary is AI-generated for educational and informational purposes only. All rights to the original content belong to the respective news publishers.",
+          "description": "={{ $('get just image URLS1').item.json.title }}\nDisclaimer: This video presents a summarized interpretation of publicly available news from the {{ $('Get Most Recent Article').item.json.domain }}. The summary is AI-generated for educational and informational purposes only. All rights to the original content belong to the respective news publishers.\nAnd \nThis video includes images from Creative Commons and Public Domain sources, including but not limited to: \n {{ $('Code in JavaScript1').item.json.allDomains }} .\nAll image rights belong to their respective owners under CC licenses.",
           "notifySubscribers": true,
           "privacyStatus": "public",
           "publicStatsViewable": false,
-          "selfDeclaredMadeForKids": true,
-          "tags": "#BreakingNews, #GlobalNews, #Education, #EdFinance, #EducationFunding, #Shorts"
+          "selfDeclaredMadeForKids": false,
+          "tags": "=shorts,viral,TrendFlicks,indian,cinema,movie,film,buzz,celebrity,gossip,bollywood,tollywood,kollywood,sandalwood,mollywood,south,actor,director,{{ $('Thumbnail Sentence').item.json.tags }}"
         }
       },
       "type": "n8n-nodes-base.youTube",
       "typeVersion": 1,
       "position": [
-        2928,
-        -1040
+        6720,
+        -688
       ],
-      "id": "613fc622-346e-4163-af6a-9ee7cf773043",
+      "id": "0693e647-0823-4ddc-9ee8-6f7f8e5a0ab3",
       "name": "Upload a video",
       "credentials": {
         "youTubeOAuth2Api": {
@@ -124,24 +108,24 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        2704,
-        -1040
+        5824,
+        -592
       ],
-      "id": "4a0bac72-d0bc-4700-b336-3743a1d1fa8f",
+      "id": "b9170d4a-fbf1-4f4c-a55b-0fe8a1b94c54",
       "name": "Get video file",
       "alwaysOutputData": false
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\n\nconst sanitizedItems = items.map(item => {\n    const newItem = { ...item };\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/[\"]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,'!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem.json.output) {\n        newItem.json.output = sanitizeText(newItem.json.output);\n      newItem.json.output = newItem.json.output.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem.json.output = removeBeforeColonIfSure(newItem.json.output);\n    }\n\n    return newItem;\n});\n\nreturn sanitizedItems;\n"
+        "jsCode": "const items = $input.all();\n\nconst sanitizedItems = items.map(item => {\n    const newItem = { ...item };\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/[\"]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,'!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem.json.output) {\n        newItem.json.output = sanitizeText(newItem.json.output);\n      newItem.json.output = newItem.json.output.replace(\"Sure, here is the summary you requested:\",\"\");\nnewItem.json.output = newItem.json.output.replace(\"Here are a few YouTube-ready, curiosity-driven, and click-worthy titles based on the\",\"\");\n      \n      newItem.json.output = removeBeforeColonIfSure(newItem.json.output);\n    }\n\n    return newItem;\n});\n\nreturn sanitizedItems;\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1680,
-        -1088
+        3104,
+        -592
       ],
-      "id": "885700d8-c6c8-4b91-ba53-9fdc02fe5512",
+      "id": "32ec38c3-1aff-4b54-81b8-07f148405bfd",
       "name": "Code in JavaScript"
     },
     {
@@ -162,111 +146,12 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        3152,
-        -1040
+        7616,
+        -592
       ],
-      "id": "249c3c47-7735-4b8c-9a40-347a7f953db5",
-      "name": "HTTP Request1"
-    },
-    {
-      "parameters": {
-        "url": "https://api.openverse.engineering/v1/images",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "={{ $json.extracted }}"
-            },
-            {
-              "name": "page_size",
-              "value": "5"
-            },
-            {
-              "name": "extension",
-              "value": "jpg"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        1680,
-        -648
-      ],
-      "id": "a9bb55f8-0d17-4cf1-af1e-7f5182bc2255",
-      "name": "Get Related Images",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "=You are a helpful assistant that provide single search keyword in single word for this user content of below just like names are high priority:\n{{ $('Code in JavaScript').item.json.output }}\n",
-        "options": {
-          "systemMessage": ""
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3,
-      "position": [
-        2352,
-        -724
-      ],
-      "id": "63b43c64-50c4-4695-b501-70be90548979",
-      "name": "AI Agent1",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "model": "gemma:2b",
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
-      "typeVersion": 1,
-      "position": [
-        2424,
-        -500
-      ],
-      "id": "64955745-e512-4e52-b664-5688a76e45f9",
-      "name": "Ollama Chat Model1",
-      "credentials": {
-        "ollamaApi": {
-          "id": "91n7NtWZ1glPjoZa",
-          "name": "Ollama account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const text = $input.first().json.output;\nvar match = text.match(/\\*\\*(.*?)\\*\\*/);\n\nvar keyword = \"\";\n\nif (!!match && match.length > 1) {\n  keyword = match[1];\n}\nelse {\n  match = text.match(/\\\"(.*?)\\\"/);\n  if (!!match && match.length > 1) {\n    keyword = match[1];\n  }\n}\nreturn [\n  {\n    json: {\n      extracted: keyword\n    }\n  }\n];;"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2704,
-        -796
-      ],
-      "id": "b59fecf9-ea4b-4620-9314-c2f52d1649d5",
-      "name": "Code in JavaScript1",
-      "alwaysOutputData": false,
-      "executeOnce": false,
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "jsCode": "var images = [];\n\nfor (const item of $input.first().json.results) {\n  if (item.url && item.url.endsWith('.jpg')) {\n    images.push(item.url);\n  }\n}\n\nfunction sanitizeTextTitle(item){\n    var newItem = item;\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/['\"‘’“”]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem) {\n        newItem = sanitizeText(newItem);\n      newItem = newItem.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem = removeBeforeColonIfSure(newItem);\n    }\n  newItem = newItem.length > 90 ? newItem.substring(0, 87) + \"...\" : newItem;\n      \n  return newItem;\n};\nconst sanitizedTitle = sanitizeTextTitle($('Get Most Recent Article').first().json.title);\nreturn [\n  {\n    json: {\n      title: sanitizedTitle,\n      images: images\n    }\n  }\n];;\n"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1904,
-        -772
-      ],
-      "id": "9522dcdb-8fa6-4133-ada3-9c05845117b7",
-      "name": "get just image URLS",
-      "disabled": true
+      "id": "d636d4b6-909d-4620-a327-617071589b35",
+      "name": "HTTP Request1",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -282,16 +167,28 @@
           "value": "news_articles",
           "mode": "name"
         },
-        "limit": 10,
+        "returnAll": true,
+        "sort": {
+          "values": [
+            {
+              "column": "published_date",
+              "direction": "DESC"
+            },
+            {
+              "column": "id",
+              "direction": "DESC"
+            }
+          ]
+        },
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        656,
-        -1088
+        1184,
+        -672
       ],
-      "id": "fcc96373-0d23-4129-87b1-8907d5227aad",
+      "id": "7dccbb7a-a3dc-4f36-8f2b-309867c0e5fa",
       "name": "Select rows from a table",
       "alwaysOutputData": true,
       "credentials": {
@@ -361,10 +258,10 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3376,
-        -1040
+        7840,
+        -592
       ],
-      "id": "9a06f3c7-f080-45db-8f2b-3e429ab2d473",
+      "id": "7ed56efb-dca6-4abd-96b0-6481618564df",
       "name": "Insert rows in a table",
       "credentials": {
         "postgres": {
@@ -375,46 +272,11 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "beb3e52b-cfc4-4c76-9ad5-bbdd06e5d2f6",
-              "leftValue": "={{ $json.images }}",
-              "rightValue": 0,
-              "operator": {
-                "type": "array",
-                "operation": "lengthGt",
-                "rightType": "number"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        2128,
-        -772
-      ],
-      "id": "490b3403-3dfe-41c8-b608-c9d1c14433b9",
-      "name": "If",
-      "disabled": true
-    },
-    {
-      "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 35
+              "field": "cronExpression",
+              "expression": "0 9,39 * * * *"
             }
           ]
         }
@@ -422,27 +284,584 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
       "position": [
-        208,
-        -1088
+        -160,
+        -688
       ],
-      "id": "bd854849-6d79-42a0-bef3-382996156943",
+      "id": "b7967062-7734-4d1e-9f22-9b58999fdee9",
       "name": "Schedule Trigger"
     },
     {
       "parameters": {
-        "url": "=https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms",
+        "url": "={{ $json.rssFeedURL }}",
         "options": {
-          "customFields": ""
+          "customFields": "figure"
         }
       },
-      "id": "e9b9ab42-313e-4a48-93f4-5c3c8340efb0",
+      "id": "8d3e87c4-c147-4285-ad60-e59713be4958",
       "name": "Parse RSS Feed",
       "type": "n8n-nodes-base.rssFeedRead",
       "typeVersion": 1,
       "position": [
-        432,
-        -1088
+        960,
+        -576
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var images = [];\n\nfunction sanitizeTextTitle(item){\n    var newItem = item;\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/['\"‘’“”]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem) {\n        newItem = sanitizeText(newItem);\n      newItem = newItem.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem = removeBeforeColonIfSure(newItem);\n    }\n  newItem = newItem.length > 90 ? newItem.substring(0, 87) + \"...\" : newItem;\n      \n  return newItem;\n};\nconst sanitizedTitle = sanitizeTextTitle($input.first().json.output);\nreturn [\n  {\n    json: {\n      title: sanitizedTitle,\n      images: images\n    }\n  }\n];;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        -592
+      ],
+      "id": "66c9b39f-9023-47fa-922e-3a65cf5fd775",
+      "name": "get just image URLS1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://dockerproxy:2375/containers/ollama/restart",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2304,
+        -592
+      ],
+      "id": "adc1d8c6-dd3f-439d-be21-366574591518",
+      "name": "HTTP Request2",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://dockerproxy:2375/containers/ollama/stop",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4704,
+        -592
+      ],
+      "id": "be1867f8-2ab5-4a1f-947b-99e264fde612",
+      "name": "HTTP Request3",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "gemma:2b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2832,
+        -368
+      ],
+      "id": "a0bf8963-3db7-4e21-b842-936a81fce2d7",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "91n7NtWZ1glPjoZa",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=“{{ $('Get Most Recent Article').item.json.title }}”",
+        "options": {
+          "systemMessage": "=You are a YOUTUBE creator with exceptional talent for delivering entertainment news in a humorous, engaging, and natural style that keeps the audience entertained and hooked — create youtube title for a video and don't add anything else in response except actual title."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        3328,
+        -592
+      ],
+      "id": "bab4a392-1634-41ba-9cd9-0017b0f71bd4",
+      "name": "AI Agent1",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "model": "gemma:2b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        3408,
+        -368
+      ],
+      "id": "5a34f09d-a6b4-4365-9e0e-2f0eefaf5674",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "91n7NtWZ1glPjoZa",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://dockerproxy:2375/containers/video_generation/stop",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2080,
+        -592
+      ],
+      "id": "b360f9be-5ba0-427c-bbdd-93a9b1362874",
+      "name": "Pause video_generation",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://dockerproxy:2375/containers/video_generation/restart",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4480,
+        -592
+      ],
+      "id": "0f85e26b-8853-452e-a60e-26158398f208",
+      "name": "Unpause video_generation",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2528,
+        -592
+      ],
+      "id": "6539dd47-9603-4640-afcb-82aa82716094",
+      "name": "Wait",
+      "webhookId": "81ecdd21-2df4-45f5-ba6f-0a3792f96975"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4928,
+        -592
+      ],
+      "id": "1cb3c723-cfff-4277-a3fb-2d36668d1dc7",
+      "name": "Wait1",
+      "webhookId": "dbf3c9e7-8f99-4bfd-a417-67574922ca4b"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dailymotion.com/user/TrendFlicksEntertainment/videos",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={\n        \"url\": \"{{ $json.url }}\",\n        \"title\": \"{{ $('get just image URLS1').item.json.title }}\",\n        \"channel\": \"fun\",\n        \"tags\": \"{{ $('Thumbnail Sentence').item.json.tags }},shorts,viral,TrendFlicks,indian,cinema,movie,film,buzz,celebrity,gossip\",\n        \"published\": \"true\",\n        \"private\":\"false\",\n        \"is_created_for_kids\":\"false\",\n        \"description\":\"{{ $('get just image URLS1').item.json.title }} Disclaimer: This video presents a summarized interpretation of publicly available news from the {{ $('Get Most Recent Article').item.json.domain }}. The summary is AI-generated for educational and informational purposes only. All rights to the original content belong to the respective news publishers. And This video includes images from Creative Commons and Public Domain sources, including but not limited to:  {{$('Code in JavaScript1').item.json.allDomains}} .All image rights belong to their respective owners under CC licenses.\"\n    }",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "=Authorization",
+              "value": "=Bearer {{ $('Dailymotion token').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        6944,
+        -496
+      ],
+      "id": "1799b4ea-d1bc-4bde-8267-95c24a4360ae",
+      "name": "HTTP Request5",
+      "alwaysOutputData": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://partner.api.dailymotion.com/oauth/v1/token",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "scope",
+              "value": "manage_videos write"
+            },
+            {
+              "name": "client_id",
+              "value": "817f53cc008799b0e59f"
+            },
+            {
+              "name": "client_secret",
+              "value": "37217c79b4e574c57c8dfce780309134983b17b9"
+            },
+            {
+              "name": "grant_type",
+              "value": "password"
+            },
+            {
+              "name": "username",
+              "value": "ch.venkat94@gmail.com"
+            },
+            {
+              "name": "password",
+              "value": "AmmaNana143*"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        6048,
+        -496
+      ],
+      "id": "8db1168e-bea0-4cc2-9d20-28df169a6e6c",
+      "name": "Dailymotion token"
+    },
+    {
+      "parameters": {
+        "url": "https://api.dailymotion.com/file/upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        6272,
+        -496
+      ],
+      "id": "1db97760-10bb-4fde-9069-6dd2fb683b69",
+      "name": "upload_get_url"
+    },
+    {
+      "parameters": {
+        "url": "http://video_generation:8080/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ $('Get video file').item.json.output }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        6496,
+        -496
+      ],
+      "id": "e8b5054e-aebe-4ad3-9c42-ed95ae1df269",
+      "name": "Get video file1",
+      "alwaysOutputData": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        7168,
+        -592
+      ],
+      "id": "ab9510c8-0804-4f44-9db6-03143d3effe8",
+      "name": "Merge"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        7392,
+        -592
+      ],
+      "id": "7d8897be-32c6-4086-8b37-931ce4b431fc",
+      "name": "Wait2",
+      "webhookId": "a47495b7-abbf-4429-8312-8c210fb6be9d"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=“{{ $('Get Most Recent Article').item.json.title }}”",
+        "options": {
+          "systemMessage": "=You are a YouTube creator with exceptional talent for delivering entertainment news in a humorous, engaging, and natural style that keeps the audience entertained and hooked. Create short, catchy, click-worthy YouTube thumbnail overlay text for a video, respond only with the exact overlay text, nothing else stricktly."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        3904,
+        -592
+      ],
+      "id": "e744d60d-0d56-466c-ac76-f3c144af41dd",
+      "name": "AI Agent2",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "model": "gemma:2b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        3984,
+        -368
+      ],
+      "id": "5838825c-d1ac-447b-828b-171e2f0f6817",
+      "name": "Ollama Chat Model2",
+      "credentials": {
+        "ollamaApi": {
+          "id": "91n7NtWZ1glPjoZa",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var images = [];\n\nfunction sanitizeTextTitle(item){\n    var newItem = item;\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/['\"‘’“”]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem) {\n        newItem = sanitizeText(newItem);\n      newItem = newItem.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem = removeBeforeColonIfSure(newItem);\n    }\n  newItem = newItem.length > 90 ? newItem.substring(0, 87) + \"...\" : newItem;\n      \n  return newItem;\n};\nconst sanitizedTitle = sanitizeTextTitle($input.first().json.output).replace(\"thumbnail\",\"\")\n\nlet safeName = sanitizedTitle\n    .replace(/[<>:\"/\\\\|?*\\x00-\\x1F]/g, \"\")\n    .replace(/\\s+/g, \"_\")           \n    .replace(/[^\\w\\-_.]/g, \"\")   \n    .trim();\n\n  safeName = safeName.substring(0, 100);\n\nconst stopWords = [\n  'a','an','the','is','are','was','were','of','to','in','on','for',\n  'with','and','or','as','by','at','from','this','that','it','be'\n];\n\nconst tags = sanitizedTitle\n  .toLowerCase()\n  .split(/\\s+/)\n  .filter(word => word && !stopWords.includes(word))\n  .join(',');\n\nreturn [\n  {\n    json: {\n      thumbnailTitle: sanitizedTitle,\n      tags: tags,\n      fileName: safeName.toLowerCase()\n    }\n  }\n];;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4256,
+        -592
+      ],
+      "id": "f7c9dae6-7532-40c0-b151-6b6e97117a1d",
+      "name": "Thumbnail Sentence",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const feeds = [\n  \"https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms\",\n  \"https://www.usmagazine.com/feed/\",\n  \"https://www.usmagazine.com/feed/\",\n  \"https://www.usmagazine.com/feed/\",\n  \"https://www.usmagazine.com/feed/\"\n];\n\nconst usedFeedURL = $input.first().json.FeedURL;\nlet usedFeedURLIndex = feeds.indexOf(usedFeedURL);\nif(usedFeedURLIndex >=5){\n  usedFeedURLIndex = 0;\n}\nelse{\n  usedFeedURLIndex = usedFeedURLIndex + 1;\n}\n\nreturn [{\n  rssFeedURL: feeds[usedFeedURLIndex]\n}]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        -672
+      ],
+      "id": "a99e2c32-fce6-4e48-b186-def6655d6ace",
+      "name": "RSS Feed Selection"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId={{ $('Upload a video').item.json.uploadId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "image/png"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        64,
+        -1440
+      ],
+      "id": "742e1b13-8413-4cdb-89ca-786496193aa9",
+      "name": "HTTP Request4",
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "MLX1zLGrP1QsQSvt",
+          "name": "YouTube account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "url": "http://video_generation:8080/get_thumbnail",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ $('HTTP Request').item.json.output.replace(\".mp4\",\".png\") }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -160,
+        -1440
+      ],
+      "id": "e00910bb-888c-4073-bbb1-572235aa5bdd",
+      "name": "Get thumbnail file",
+      "alwaysOutputData": false,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "update",
+        "videoId": "={{ $('Upload a video').item.json.uploadId }}",
+        "title": "={{ $('get just image URLS1').item.json.title }}",
+        "regionCode": "IN",
+        "categoryId": "24",
+        "updateFields": {
+          "description": "={{ $('get just image URLS1').item.json.title }} Disclaimer: This video presents a summarized interpretation of publicly available news from the Times of India RSS feed and https://www.telugubulletin.com. The summary is AI-generated for educational and informational purposes only. All rights to the original content belong to the respective news publishers. And  This video includes images from Creative Commons and Public Domain sources, including but not limited to:   {{ $('Code in JavaScript1').item.json.allDomains }} . All image rights belong to their respective owners under CC licenses.",
+          "privacyStatus": "public"
+        }
+      },
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -1440
+      ],
+      "id": "eb4fc2f0-61f5-40d1-a0fc-3d6216d385b8",
+      "name": "Update a video",
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "MLX1zLGrP1QsQSvt",
+          "name": "YouTube account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('upload_get_url').item.json.upload_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Dailymotion token').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        6720,
+        -496
+      ],
+      "id": "e1835cb6-4e38-4c1e-9aa3-a3158fe1f6fc",
+      "name": "Upload raw file",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/youtube/v3/playlistItems?part=snippet",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "youTubeOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"snippet\": {\n    \"playlistId\": \"PLiOmYWCIVGE8SQ083b7ZtyTyLxm9_oP1B\",\n    \"resourceId\": {\n      \"kind\": \"youtube#video\",\n      \"videoId\": \"{{ $('Upload a video').item.json.uploadId }}\"\n    }\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        6944,
+        -688
+      ],
+      "id": "48de8e25-634c-4985-ac91-e7528802344f",
+      "name": "HTTP Request6",
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "MLX1zLGrP1QsQSvt",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "events": [
+          "init"
+        ]
+      },
+      "type": "n8n-nodes-base.n8nTrigger",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -496
+      ],
+      "id": "31dd3034-7a65-4b02-8155-e90a5feff7a6",
+      "name": "n8n Trigger"
     },
     {
       "parameters": {
@@ -455,8 +874,8 @@
           },
           "conditions": [
             {
-              "id": "31992249-ac19-45d6-acc5-6751a9e5dcfc",
-              "leftValue": "={{ $json.extracted }}",
+              "id": "96b019bb-8231-41d7-b208-839f9cd7d594",
+              "leftValue": "={{ $json.FeedURL }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -472,46 +891,93 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2928,
-        -648
+        1856,
+        -592
       ],
-      "id": "fedb1565-bfaa-4859-b3b0-2d7f6b442de2",
-      "name": "If1",
-      "disabled": true
+      "id": "dd41caa2-4879-4930-bc40-568c18922cc8",
+      "name": "If",
+      "executeOnce": false
     },
     {
       "parameters": {
-        "url": "https://www.telugubulletin.com/movies/feed",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.rssFeedRead",
-      "typeVersion": 1.2,
-      "position": [
-        208,
-        -1520
-      ],
-      "id": "789063f0-4004-4e7c-a2f4-45a6c25a573e",
-      "name": "RSS Read",
-      "disabled": true
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "={{ $json['content:encoded'] }}\nRemove any links and URLS AND SUMARIZE TEH CONTENT IN SHORT",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "nzbouq1eZK18DJCy",
+          "mode": "list",
+          "cachedResultName": "FeedURL",
+          "cachedResultUrl": "/projects/JdCEBtl6r2qFhkwX/datatables/nzbouq1eZK18DJCy"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "1"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "FeedURL": "={{ $('RSS Feed Selection').first().json.rssFeedURL }}"
+          },
+          "matchingColumns": [
+            "FeedURL"
+          ],
+          "schema": [
+            {
+              "id": "FeedURL",
+              "displayName": "FeedURL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
         "options": {
-          "systemMessage": "=You are a news reporter with exceptional talent for delivering entertainment news in a humorous, engaging, and natural style that keeps the audience entertained and hooked — Summarized all within 500 characters ."
+          "dryRun": false
         }
       },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
       "position": [
-        432,
-        -1520
+        1632,
+        -672
       ],
-      "id": "32ec78c4-3fc2-4270-b339-3fbc7058563c",
-      "name": "AI Agent2",
-      "alwaysOutputData": true,
-      "disabled": true
+      "id": "5517a2f8-fd66-413f-8da4-f1a3b123f06b",
+      "name": "Update row(s)"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "nzbouq1eZK18DJCy",
+          "mode": "list",
+          "cachedResultName": "FeedURL",
+          "cachedResultUrl": "/projects/JdCEBtl6r2qFhkwX/datatables/nzbouq1eZK18DJCy"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "1"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        64,
+        -592
+      ],
+      "id": "a808b04e-af6c-4019-a641-b553392791b8",
+      "name": "Get row(s)"
     },
     {
       "parameters": {
@@ -521,11 +987,11 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
       "position": [
-        504,
-        -1296
+        144,
+        -896
       ],
-      "id": "0c865226-acfd-4217-8bd7-5fbb7397b00d",
-      "name": "Ollama Chat Model2",
+      "id": "d2fb190e-c0cf-4bb6-b62b-5381f7de1282",
+      "name": "Ollama Chat Model3",
       "credentials": {
         "ollamaApi": {
           "id": "91n7NtWZ1glPjoZa",
@@ -536,57 +1002,167 @@
     },
     {
       "parameters": {
-        "jsCode": "var images = [];\n\n// for (const item of $input.first().json.results) {\n//   if (item.url && item.url.endsWith('.jpg')) {\n//     images.push(item.url);\n//   }\n// }\n\nfunction sanitizeTextTitle(item){\n    var newItem = item;\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/['\"‘’“”]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem) {\n        newItem = sanitizeText(newItem);\n      newItem = newItem.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem = removeBeforeColonIfSure(newItem);\n    }\n  newItem = newItem.length > 90 ? newItem.substring(0, 87) + \"...\" : newItem;\n      \n  return newItem;\n};\nconst sanitizedTitle = sanitizeTextTitle($('Get Most Recent Article').first().json.title);\nreturn [\n  {\n    json: {\n      title: sanitizedTitle,\n      images: images\n    }\n  }\n];;\n"
+        "promptType": "define",
+        "text": "=“{{ $('Get Most Recent Article').item.json.title }}”",
+        "options": {
+          "systemMessage": "=You are a content extraction system.\nExtract only the person names or key objects mentioned in the provided entertainment title.\nRespond strictly in this JSON format:\n{ \"entities\": [\"Name1\", \"Name2\", \"Object1\"] }\nNo explanations, no other text."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        64,
+        -1120
+      ],
+      "id": "c0a5f7dd-896b-43a9-8dfb-67fbf7800ca2",
+      "name": "AI Agent3",
+      "alwaysOutputData": false,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "var images = [];\n\nfunction sanitizeTextTitle(item){\n    var newItem = item;\n\n    function sanitizeText(text) {\n        if (!text) return text;\n\n        // Decode common HTML entities for quotes\n        text = text.replace(/&#8216;|&lsquo;/g, \"\"); // left single quote\n        text = text.replace(/&#8217;|&rsquo;/g, \"\"); // right single quote\n        text = text.replace(/&#8220;|&ldquo;/g, \"\"); // left double quote\n        text = text.replace(/&#8221;|&rdquo;/g, \"\"); // right double quote\n        text = text.replace(/&quot;/g, \"\");          // double quote\n\n        // Remove straight, curly, and escaped quotes\n        text = text.replace(/['\"‘’“”]|\\\\\\\"|\\\\'/g, \"\");\n\n        // Remove all types of line breaks (actual, escaped, unicode)\n        text = text.replace(/(\\r\\n|\\n|\\r|\\u2028|\\u2029)/g, \" \"); // actual newlines\n        text = text.replace(/\\\\r\\\\n|\\\\n|\\\\r/g, \" \");             // escaped newlines\n\n        // Remove all special characters except letters, numbers, basic punctuation\n        text = text.replace(/[^a-zA-Z0-9 .,!?;:()-]/g, \" \");\n\n        // Reduce multiple spaces to a single space\n        text = text.replace(/\\s+/g, \" \");\n\n        // Trim leading/trailing spaces\n        return text.trim();\n    }\n    function removeBeforeColonIfSure(text) {\n    if (text.toLowerCase().includes(\"sure\")) {\n        const colonIndex = text.indexOf(\":\");\n        if (colonIndex !== -1) {\n            return text.slice(colonIndex + 1).trim();\n        }\n    }\n    return text;\n}\n    if (newItem) {\n        newItem = sanitizeText(newItem);\n      newItem = newItem.replace(\"Sure, here is the summary you requested:\",\"\");\n\n      newItem = removeBeforeColonIfSure(newItem);\n    }\n  newItem = newItem.length > 90 ? newItem.substring(0, 87) + \"...\" : newItem;\n      \n  return newItem;\n};\nconst sanitizedTitle = sanitizeTextTitle($input.first().json.output).toLowerCase().replace(\"thumbnail\",\"\").replace(\"entities:\",\"\")\n\nlet safeName = sanitizedTitle\n    .replace(/[<>:\"/\\\\|?*\\x00-\\x1F]/g, \"\")\n    .replace(/\\s+/g, \"_\")           \n    .replace(/[^\\w\\-_.]/g, \"\")   \n    .trim();\n\n  safeName = safeName.substring(0, 100);\n\nconst stopWords = [\n  'a','an','the','is','are','was','were','of','to','in','on','for',\n  'Person names:','objects:',\n  'with','and','or','as','by','at','from','this','that','it','be','-', 'sure','article','Objects','entities:'\n];\n\nconst tags = sanitizedTitle\n  .toLowerCase()\n  .split(/\\s+/)\n  .filter(word => word && !stopWords.includes(word))\n  .join(',');\n\nreturn [\n  {\n    json: {\n      articleAbout: sanitizedTitle.split(',')[0]\n    }\n  }\n];;\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1904,
-        -1088
+        416,
+        -992
       ],
-      "id": "3519a786-9790-45a8-9de5-2d933641a132",
-      "name": "get just image URLS1",
+      "id": "bb6904a8-b8d1-46d7-946d-71ca449a96ee",
+      "name": "Image Search Peron Extraction",
+      "alwaysOutputData": true,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ec64f2e5-6ccb-4dc2-98b9-efad9bc983aa",
+              "leftValue": "={{ $('Image Search Peron Extraction').item.json.articleAbout }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -160,
+        -992
+      ],
+      "id": "d7291a8c-243b-4dbe-aa6d-a3d071f48752",
+      "name": "If1",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "03e5aecd-5d14-4eb5-85c2-0b3a66928572",
+              "leftValue": "={{ $json.rssFeedURL }}",
+              "rightValue": "nasa.gov/feed",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "ignoreCase": true
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        512,
+        -672
+      ],
+      "id": "0af4c1db-1429-456c-bae1-31a06cf47671",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Utility: clean text (CDATA + entities)\nconst cleanText = (text = '') => {\n  return text\n    .replace(/<!\\[CDATA\\[(.*?)\\]\\]>/gs, '$1')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"')\n    .replace(/&#39;/g, \"'\")\n    .trim();\n};\n\n// Utility: clean and normalize image URL\nconst normalizeUrl = (url) => {\n  if (!url) return null;\n  let clean = url.trim();\n\n  // Remove ?resize=... completely if it’s the only query or at the end\n  clean = clean.replace(/\\?resize=\\d+[x,]\\d+$/i, '');\n  clean = clean.replace(/\\?resize=\\d+[x,]\\d+(&|$)/i, '?');\n  clean = clean.replace(/&resize=\\d+[x,]\\d+(&|$)/i, '&');\n\n  // Remove '?', '&', or trailing 'false' leftovers\n  clean = clean.replace(/[?&]+$/g, '');\n  clean = clean.replace(/false$/i, '');\n\n  return clean.trim();\n};\n\n// Parse and filter best-quality unique image URLs\nconst parseImageUrls = (itemXml) => {\n  const mediaMatches = itemXml.match(/<media:content[^>]*url=\"([^\"]+)\"[^>]*>/gi) || [];\n  const rawUrls = mediaMatches.map(m => {\n    const urlMatch = m.match(/url=\"([^\"]+)\"/);\n    return urlMatch ? normalizeUrl(urlMatch[1]) : null;\n  }).filter(Boolean);\n\n  // Deduplicate by base filename and keep largest version\n  const bestImages = {};\n  for (const url of rawUrls) {\n    const [base, query] = url.split('?');\n    let size = 0;\n\n    // Detect resolution inside query (resize=WxH)\n    if (query && query.includes('resize=')) {\n      const match = query.match(/resize=(\\d+)[x,](\\d+)/i);\n      if (match) {\n        const w = parseInt(match[1]);\n        const h = parseInt(match[2]);\n        size = w * h;\n      }\n    }\n\n    if (!bestImages[base] || size > bestImages[base].size) {\n      bestImages[base] = { url, size };\n    }\n  }\n\n  return Object.values(bestImages).map(x => x.url);\n};\n\n// Main XML parser\nconst parseXml = (xml) => {\n  const parseTag = (tag, parent) => {\n    const regex = new RegExp(`<${tag}[^>]*>([\\\\s\\\\S]*?)<\\\\/${tag}>`, 'gi');\n    const matches = [];\n    let match;\n    while ((match = regex.exec(parent))) {\n      matches.push(cleanText(match[1]));\n    }\n    return matches;\n  };\n\n  const itemMatches = xml.match(/<item[\\s\\S]*?<\\/item>/gi) || [];\n  return itemMatches.map(itemXml => {\n    const title = parseTag('title', itemXml)[0] || '';\n    let link = parseTag('link', itemXml)[0] || '';\n    if (!link) {\n      const atomMatch = itemXml.match(/<atom:link[^>]*href=\"([^\"]+)\"[^>]*>/i);\n      if (atomMatch) link = atomMatch[1];\n    }\n    const guid = parseTag('guid', itemXml)[0] || '';\n    const pubDate = parseTag('pubDate', itemXml)[0] || '';\n    const description = parseTag('description', itemXml)[0] || '';\n\n    const images = parseImageUrls(itemXml);\n\n    return {\n      json: {\n        title,\n        link,\n        guid,\n        isoDate: pubDate,\n        contentSnippet: description,\n        images\n      }\n    };\n  });\n};\n\n// Execute\nconst xmlData = items[0].json.data || '';\nreturn parseXml(xmlData);\n"
+      },
+      "id": "0299b029-171c-4de0-855a-4be9cbc604b6",
+      "name": "Extract Images (Regex)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -768
+      ],
       "alwaysOutputData": true
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://dockerproxy:2375/containers/ollama/unpause",
-        "options": {}
+        "url": "={{ $json.rssFeedURL }}",
+        "responseFormat": "string",
+        "options": {
+          "fullResponse": false,
+          "followAllRedirects": true,
+          "followRedirect": true,
+          "timeout": 20000
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.9"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+            }
+          ]
+        }
       },
+      "id": "ef159486-b82e-4e39-82ee-7d86cad49ab9",
+      "name": "Fetch Article HTML",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
+      "typeVersion": 2,
       "position": [
-        1104,
-        -1088
+        736,
+        -768
       ],
-      "id": "85818fb6-1aad-43f5-9866-74320c63ea20",
-      "name": "HTTP Request2",
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://dockerproxy:2375/containers/ollama/pause",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [
-        2128,
-        -1088
-      ],
-      "id": "38c9e4e7-af75-424f-a070-382577d8b45e",
-      "name": "HTTP Request3",
-      "onError": "continueRegularOutput"
+      "alwaysOutputData": true
     }
   ],
+  "pinData": {},
   "connections": {
     "Get Most Recent Article": {
       "main": [
         [
           {
-            "node": "HTTP Request2",
+            "node": "Update row(s)",
             "type": "main",
             "index": 0
           }
@@ -599,17 +1175,6 @@
           {
             "node": "Code in JavaScript",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ollama Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -630,7 +1195,7 @@
       "main": [
         [
           {
-            "node": "HTTP Request1",
+            "node": "HTTP Request6",
             "type": "main",
             "index": 0
           }
@@ -644,6 +1209,11 @@
             "node": "Upload a video",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Dailymotion token",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -652,7 +1222,7 @@
       "main": [
         [
           {
-            "node": "get just image URLS1",
+            "node": "AI Agent1",
             "type": "main",
             "index": 0
           }
@@ -670,61 +1240,6 @@
         ]
       ]
     },
-    "Get Related Images": {
-      "main": [
-        [
-          {
-            "node": "get just image URLS",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Agent1": {
-      "main": [
-        [
-          {
-            "node": "Code in JavaScript1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ollama Chat Model1": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent1",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code in JavaScript1": {
-      "main": [
-        [
-          {
-            "node": "If1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "get just image URLS": {
-      "main": [
-        [
-          {
-            "node": "If",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Select rows from a table": {
       "main": [
         [
@@ -736,29 +1251,11 @@
         ]
       ]
     },
-    "If": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "AI Agent1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Schedule Trigger": {
       "main": [
         [
           {
-            "node": "Parse RSS Feed",
+            "node": "Get row(s)",
             "type": "main",
             "index": 0
           }
@@ -776,29 +1273,176 @@
         ]
       ]
     },
-    "If1": {
+    "get just image URLS1": {
       "main": [
         [
           {
-            "node": "Get Related Images",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "AI Agent1",
+            "node": "AI Agent2",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "RSS Read": {
+    "HTTP Request2": {
       "main": [
         [
           {
-            "node": "AI Agent2",
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "get just image URLS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause video_generation": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unpause video_generation": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dailymotion token": {
+      "main": [
+        [
+          {
+            "node": "upload_get_url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upload_get_url": {
+      "main": [
+        [
+          {
+            "node": "Get video file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get video file1": {
+      "main": [
+        [
+          {
+            "node": "Upload raw file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request5": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
             "type": "main",
             "index": 0
           }
@@ -816,33 +1460,218 @@
         ]
       ]
     },
-    "get just image URLS1": {
+    "AI Agent2": {
       "main": [
         [
           {
-            "node": "HTTP Request3",
+            "node": "Thumbnail Sentence",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "HTTP Request2": {
+    "Thumbnail Sentence": {
       "main": [
         [
           {
-            "node": "AI Agent",
+            "node": "Unpause video_generation",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "HTTP Request3": {
+    "RSS Feed Selection": {
       "main": [
         [
           {
-            "node": "HTTP Request",
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request4": {
+      "main": [
+        [
+          {
+            "node": "Update a video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get thumbnail file": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload raw file": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a video": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request6": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "n8n Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Pause video_generation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row(s)": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "RSS Feed Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent3",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent3": {
+      "main": [
+        [
+          {
+            "node": "Image Search Peron Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image Search Peron Extraction": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "AI Agent3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Fetch Article HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Article HTML": {
+      "main": [
+        [
+          {
+            "node": "Extract Images (Regex)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Images (Regex)": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
             "type": "main",
             "index": 0
           }
@@ -850,9 +1679,15 @@
       ]
     }
   },
-  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cdcce110-0986-4ced-a4c5-99ac350745e6",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "2ffc8d535cf46bf7b18c0fa5ea4c04f2d2a1c43560d2c8663f58e30c9b6fc744"
-  }
+    "instanceId": "633ddd8f3e218555fc3391a2ccfc784767407c0ac9e14203726840ec344c05e7"
+  },
+  "id": "DdnH7TKI7PBuGj8q",
+  "tags": []
 }

@@ -1,239 +1,3 @@
-# import os
-# import json
-# import requests
-# import numpy as np
-# from io import BytesIO
-# from PIL import Image, ImageDraw, ImageFont
-# from moviepy import (
-#     AudioFileClip,
-#     ImageClip,
-#     CompositeVideoClip,
-#     AudioArrayClip,
-#     CompositeAudioClip,
-#     VideoClip,
-#     ColorClip
-# )
-# from TTS.api import TTS
-# import textwrap
-# import cv2
-# # -----------------------------
-# # 1. Read input payload
-# # -----------------------------
-# payload_str = os.getenv("VIDEO_PAYLOAD")
-# if not payload_str:
-#     raise ValueError("VIDEO_PAYLOAD environment variable not found")
-
-# payload = json.loads(payload_str)
-
-# texts = payload.get("texts", [])
-# thumbnail_url = payload.get("thumbnail", "")
-# voice_file = payload.get("voice_file", "voice.wav")
-# video_file = payload.get("video_file", "output.mp4")
-# video_size = tuple(payload.get("video_size", [720, 1280]))
-# bg_music_file = payload.get("bg_music_file", "/app/bg_music.mp3")  # optional
-
-# if not texts or not thumbnail_url:
-#     raise ValueError("Payload must include 'texts' and 'thumbnail'")
-
-# os.makedirs(os.path.dirname(video_file), exist_ok=True)
-
-# # -----------------------------
-# # 2. Generate TTS Audio
-# # -----------------------------
-# tts_text = " ".join(texts)
-# tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", gpu=False)
-# tts.tts_to_file(text=tts_text, file_path=voice_file, speed=0.9)
-# audio_clip = AudioFileClip(voice_file)
-# video_duration = audio_clip.duration
-
-# # -----------------------------
-# # 3. Download and prepare thumbnail image
-# # -----------------------------
-# response = requests.get(thumbnail_url, timeout=15)
-# response.raise_for_status()
-# img = Image.open(BytesIO(response.content)).convert("RGB")
-# img_np = np.array(img)
-# img_clip_base = ImageClip(img_np).resized(video_size)
-
-# # -----------------------------
-# # 4. Create timeline-based cinematic animation
-# # -----------------------------
-# fps = 15
-# num_frames = int(video_duration * fps)
-
-# # Segment durations in seconds
-# fade_in_sec = 5
-# zoom1_sec = 8
-# shake_sec = 2
-# rotate_sec = 3
-# zoom2_sec = 8
-# fade_out_sec = video_duration - (fade_in_sec + zoom1_sec + shake_sec + rotate_sec + zoom2_sec)
-
-# fade_in_frames = int(fade_in_sec * fps)
-# zoom1_frames = int(zoom1_sec * fps)
-# shake_frames = int(shake_sec * fps)
-# rotate_frames = int(rotate_sec * fps)
-# zoom2_frames = int(zoom2_sec * fps)
-# fade_out_frames = int(fade_out_sec * fps)
-
-# max_zoom = 2.15
-# shake_intensity = 3
-# max_rotation = 360
-
-# # Function to generate frame transformations
-# def make_frame(t):
-#     i = int(t * fps)
-#     frame = img_np.copy()              # use base numpy image instead of ImageClip frame
-#     h, w = frame.shape[:2]
-
-#     def rotate_and_crop(image, angle, scale=1.0, shake_x=0, shake_y=0):
-#         M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, scale)
-#         M[0, 2] += shake_x
-#         M[1, 2] += shake_y
-#         return cv2.warpAffine(image, M, (w, h),
-#                               flags=cv2.INTER_LINEAR,
-#                               borderMode=cv2.BORDER_REFLECT)
-
-#     if i < fade_in_frames:  # Fade-in
-#         alpha = i / fade_in_frames
-#         frame_mod = cv2.convertScaleAbs(frame * alpha)
-
-#     elif i < fade_in_frames + zoom1_frames:  # First zoom
-#         phase = (i - fade_in_frames) / zoom1_frames
-#         zoom = 1.0 + (max_zoom - 1.0) * (phase / 0.5 if phase <= 0.5 else 1 - (phase - 0.5) / 0.5)
-#         frame_mod = rotate_and_crop(frame, 0, zoom)
-
-#     elif i < fade_in_frames + zoom1_frames + shake_frames:  # Shake
-#         shake_x = np.random.randint(-shake_intensity, shake_intensity + 1)
-#         shake_y = np.random.randint(-shake_intensity, shake_intensity + 1)
-#         frame_mod = rotate_and_crop(frame, 0, 1.0, shake_x, shake_y)
-
-#     elif i < fade_in_frames + zoom1_frames + shake_frames + rotate_frames:  # Rotate 360°
-#         phase = (i - fade_in_frames - zoom1_frames - shake_frames) / rotate_frames
-#         angle = max_rotation * phase
-#         frame_mod = rotate_and_crop(frame, angle, 1.0)
-
-#     elif i < fade_in_frames + zoom1_frames + shake_frames + rotate_frames + zoom2_frames:  # Second zoom
-#         phase = (i - fade_in_frames - zoom1_frames - shake_frames - rotate_frames) / zoom2_frames
-#         zoom = 1.0 + (max_zoom - 1.0) * (phase / 0.5 if phase <= 0.5 else 1 - (phase - 0.5) / 0.5)
-#         frame_mod = rotate_and_crop(frame, 0, zoom)
-
-#     else:  # Fade-out
-#         alpha = max(0, (num_frames - i) / fade_out_frames)
-#         frame_mod = cv2.convertScaleAbs(frame * alpha)
-
-#     return frame_mod
-
-# # ✅ Correct way in MoviePy 2.x — use VideoClip instead of ImageClip.with_make_frame
-# animated_clip = VideoClip(make_frame, duration=video_duration)
-
-# # -----------------------------
-# # 5. Create scrolling text overlay
-# # -----------------------------
-# scroll_text = "\n\n".join(texts)
-# font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-# font = ImageFont.truetype(font_path, 30)
-# lines = textwrap.wrap(scroll_text, width=35)
-# img_w, img_h = 1200, 100*len(lines)
-# text_img = Image.new("RGBA", (img_w, img_h), (0,0,0,0))
-# draw = ImageDraw.Draw(text_img)
-# y_offset = 0
-# for line in lines:
-#     bbox = draw.textbbox((0,0), line, font=font)
-#     w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-#     x = (img_w - w)/2
-#     draw.text((x, y_offset), line, font=font, fill="white")
-#     y_offset += h+10
-
-# scroll_img_clip = ImageClip(np.array(text_img)).with_duration(video_duration)
-
-# total_scroll = img_h + video_size[1]
-# scroll_speed = total_scroll / (video_duration*2)
-
-# # def scroll_position(t):
-# #     y = video_size[1] - scroll_speed*t
-# #     return ("center", y)
-
-# # def scroll_position(t):
-# #     y = video_size[1] - scroll_speed * t
-# #     # Clamp Y so it never goes far offscreen
-# #     if y < -video_size[1]:
-# #         y = -video_size[1]
-# #     return ("center", y)
-
-            
-# # # scroll_clip = scroll_img_clip.with_duration(scroll_position)
-# # scroll_clip = scroll_img_clip.with_duration(video_duration).with_position(scroll_position)
-
-# # --- Safe scrolling text setup ---
-# def scroll_position(t):
-#     y = video_size[1] - scroll_speed * t
-#     # Clamp Y so text never leaves the render area (prevents 0-height mask)
-#     if y < -video_size[1] + 5:
-#         y = -video_size[1] + 5
-#     return ("center", y)
-
-# scroll_clip = (
-#     scroll_img_clip
-#     .with_position(video_duration)
-#     .with_position(scroll_position)
-#     .resized(video_size)           # Correct for ImageClip
-#     .with_opacity(1)
-# )
-
-
-# # -----------------------------
-# # 6. Add background music
-# # -----------------------------
-# final_audio = audio_clip
-# if os.path.exists(bg_music_file):
-#     bg_clip = AudioFileClip(bg_music_file)
-#     bg_fps = 44100
-#     bg_array = bg_clip.to_soundarray(fps=bg_fps)*0.12
-#     loops = int(video_duration//bg_clip.duration)+1
-#     bg_array_full = np.tile(bg_array, (loops,1))
-#     samples_needed = int(video_duration*bg_fps)
-#     bg_array_full = bg_array_full[:samples_needed]
-#     bg_music_loop = AudioArrayClip(bg_array_full, fps=bg_fps).with_duration(video_duration)
-#     final_audio = CompositeAudioClip([audio_clip, bg_music_loop]).with_duration(video_duration)
-
-# # -----------------------------
-# # 7. Combine animated image, text, and audio
-# # -----------------------------
-# # final_clip = CompositeVideoClip([animated_clip, scroll_clip]).with_audio(final_audio)
-# # Determine final video size (use largest width and height among clips)
-# final_width = max(animated_clip.w, scroll_clip.w)
-# final_height = max(animated_clip.h, scroll_clip.h)
-
-# # Optionally, create a black background clip to fill empty space
-# background_clip = ColorClip(
-#     size=(final_width, final_height),
-#     color=(0, 0, 0),
-#     duration=max(animated_clip.duration, scroll_clip.duration)
-# )
-
-# # Center scroll_clip and animated_clip on background
-# animated_clip = animated_clip.with_position("center")
-# scroll_clip = scroll_clip.with_position("center")
-
-# # Remove mask issues by ensuring all clips have proper masks
-# if animated_clip.mask is None:
-#     animated_clip = animated_clip.with_mask(animated_clip.to_mask())
-# if scroll_clip.mask is None:
-#     scroll_clip = scroll_clip.with_mask(scroll_clip.to_mask())
-
-# # Compose final clip
-# final_clip = CompositeVideoClip([background_clip, animated_clip, scroll_clip])
-
-# # Add audio if needed
-# final_clip = final_clip.with_audio(final_audio)
-
-# final_clip.write_videofile(video_file, fps=fps)
-
-# print(f"✅ Video created successfully with cinematic animation and TTS: {video_file}")
-
-
-#4 multiple images with effects (google)
 import os
 import json
 import requests
@@ -248,7 +12,8 @@ from moviepy import (
     CompositeAudioClip,
     VideoClip,
     ColorClip,
-    TextClip
+    TextClip,
+    concatenate_videoclips
 )
 from TTS.api import TTS
 import cv2
@@ -262,102 +27,95 @@ import textwrap
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
 
+from PIL import Image, ImageDraw, ImageFont
+import hashlib
+
 def create_thumbnail_from_array(
     images_np,
     text,
     output_path="thumbnail.png",
     size=(1080, 1920),
-    font_path="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    font_size=60,
-    text_color=(255, 165, 0, 255),     # orange with alpha
-    shadow_color=(0, 0, 0, 180),       # semi-transparent shadow
-    position="center",
-    max_width_ratio=0.9,               # 90% of image width
-    max_height_ratio=0.8,              # 80% of image height
-    line_spacing=1.2                   # space between lines
+    font_path="/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-BoldItalic.ttf",
+    first_line_font_size=160,
+    other_lines_font_size= 100,
+    first_line_color=(255, 255, 255, 255),   # White
+    other_lines_color=(255, 165, 0, 255),    # Orange
+    shadow_color=(0, 0, 0, 200),
+    line_spacing=1.2
 ):
-    """
-    Creates a thumbnail from the first image in a NumPy array.
-    Auto-wraps and scales text to fit the image, adds soft shadow, and saves as PNG.
-    """
     if not images_np:
         raise ValueError("images_np is empty — no images to process.")
 
-    # Prepare base image
+    # Base image
     img = Image.fromarray(images_np[0])
     if img.mode != "RGBA":
         img = img.convert("RGBA")
     img.thumbnail(size, Image.Resampling.LANCZOS)
     img_w, img_h = img.size
+    bg = Image.new("RGBA", size, (0, 0, 0, 255))
+    bg.paste(img, ((size[0]-img_w)//2, (size[1]-img_h)//2))
+    img = bg
 
-    # Create transparent text layer
-    txt_layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    # Text layer
+    txt_layer = Image.new("RGBA", img.size, (0,0,0,0))
     draw = ImageDraw.Draw(txt_layer)
 
-    # Load font with fallback
-    try:
-        font = ImageFont.truetype(font_path, font_size)
-    except IOError:
-        font = ImageFont.load_default()
+    # Wrap text
+    max_text_width = int(img_w * 0.9)
+    words = text.split()
+    lines = []
+    current_line = ""
+    for word in words:
+        test_line = current_line + (" " if current_line else "") + word
+        # Use first line font size temporarily to check width
+        font_size = first_line_font_size if not lines else other_lines_font_size
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except IOError:
+            font = ImageFont.load_default()
+        if draw.textlength(test_line, font=font) <= max_text_width:
+            current_line = test_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
 
-    # --- Auto-fit: reduce font size until text fits width & height ---
-    while True:
-        # Wrap text within width
-        max_text_width = int(img_w * max_width_ratio)
-        lines = []
-        for line in text.split("\n"):
-            wrapped = textwrap.wrap(line, width=40)
-            lines.extend(wrapped if wrapped else [""])
-
-        # Measure wrapped text block
-        line_heights, line_widths = [], []
-        for line in lines:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            line_widths.append(w)
-            line_heights.append(h)
-
-        total_height = sum(line_heights) + (len(lines) - 1) * (line_heights[0] * (line_spacing - 1))
-        text_width = max(line_widths) if line_widths else 0
-        text_height = total_height
-
-        if text_width <= max_text_width and text_height <= img_h * max_height_ratio:
-            break  # fits nicely
-        font_size -= 2
-        if font_size < 12:
-            break  # prevent infinite loop if text is extremely long
-        font = ImageFont.truetype(font_path, font_size)
-
-    # --- Positioning ---
-    if position == "top":
-        y = img_h * 0.1
-    elif position == "bottom":
-        y = img_h - text_height - 50
-    else:  # center
-        y = (img_h - text_height) / 2
-    x = (img_w - text_width) / 2
-
-    # --- Draw text with shadow ---
-    shadow_offset = 2
-    y_cursor = y
+    # Compute total height with variable font sizes
+    line_heights = []
     for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font)
-        line_width = bbox[2] - bbox[0]
-        x_line = (img_w - line_width) / 2
+        font_size = first_line_font_size if i == 0 else other_lines_font_size
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except IOError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0,0), line, font=font)
+        line_heights.append(bbox[3] - bbox[1])
+    
+    total_height = sum(line_heights) + (len(lines)-1)*line_heights[0]*(line_spacing-1)
+    y_cursor = (img_h - total_height)/2
 
-        # Draw shadow
-        for dx in (-shadow_offset, shadow_offset):
-            for dy in (-shadow_offset, shadow_offset):
-                draw.text((x_line + dx, y_cursor + dy), line, font=font, fill=shadow_color)
+    # Draw each line with its font size and color
+    for i, line in enumerate(lines):
+        font_size = first_line_font_size if i == 0 else other_lines_font_size
+        try:
+            font = ImageFont.truetype(font_path, font_size)
+        except IOError:
+            font = ImageFont.load_default()
+        color = first_line_color if i == 0 else other_lines_color
+        x_cursor = (img_w - draw.textlength(line, font=font))/2
 
-        # Draw text
-        draw.text((x_line, y_cursor), line, font=font, fill=text_color)
+        # Shadow
+        for dx in (-3,3):
+            for dy in (-3,3):
+                draw.text((x_cursor+dx, y_cursor+dy), line, font=font, fill=shadow_color)
+        # Text
+        draw.text((x_cursor, y_cursor), line, font=font, fill=color)
         y_cursor += line_heights[i] * line_spacing
 
-    # Merge text layer with image
+    # Merge layers
     img = Image.alpha_composite(img, txt_layer)
-
-    # Save
     img.save(output_path, format="PNG", quality=95)
     return output_path
 
@@ -387,9 +145,13 @@ os.makedirs(os.path.dirname(video_file), exist_ok=True)
 # -----------------------------
 # 2. Generate TTS Audio
 # -----------------------------
+reference_wav = "/app/reference_voice.wav"  # optional
 tts_text = " ".join(texts)
-tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", gpu=False)
-tts.tts_to_file(text=tts_text, file_path=voice_file)
+tts = TTS(model_name="tts_models/en/vctk/vits", gpu=False)
+tts.tts_to_file(text=tts_text, 
+                file_path=voice_file,
+                speaker_wav=reference_wav,
+                speaker='p248')
 
 # load and slow down
 sound = AudioSegment.from_file(voice_file)
@@ -402,64 +164,98 @@ slower.export(voice_file, format="wav")
 audio_clip = AudioFileClip(voice_file)
 video_duration = audio_clip.duration
 
-# -----------------------------
-# 3. Adaptive Multi-Image Cinematic Sequence (Zoom + Pan + Cross-Fade)
-# -----------------------------
 image_urls_string = payload.get("images", "")
-# other_images = [u.strip() for u in image_urls_string.split(",") if u.strip()]
+thumbnail_url = payload.get("thumbnail", "")
+video_size = (1080, 1920)
+max_images = 4
+
+# -------------------------------------------------------------------
+# PARSE AND CLEAN URL LIST
+# -------------------------------------------------------------------
 image_urls_tmp = re.split(r',(?=https?://)', image_urls_string)
-other_images = [url.strip() for url in image_urls_tmp]  # clean extra spaces/newlines
+seen = set()
+image_urls = [
+    clean for raw in image_urls_tmp
+    if (clean := raw.strip()) and not (clean.lower() in seen or seen.add(clean.lower()))
+]
 
-if thumbnail_url.startswith("http"):
-    image_urls = [thumbnail_url] + other_images  # Thumbnail first
-else:
-    image_urls = other_images
+# -------------------------------------------------------------------
+# Sort image URLs by quality (Content-Length or dimension)
+# -------------------------------------------------------------------
+def estimate_quality(url):
+    try:
+        resp = requests.head(url, timeout=8, allow_redirects=True)
+        size = int(resp.headers.get("Content-Length", 0))
+        if size > 0:
+            return size  # use size when available
 
-image_urls = [u for u in image_urls if u.strip()]
+        # fallback: use pixel area
+        img_resp = requests.get(url, timeout=8, stream=True)
+        img = Image.open(BytesIO(img_resp.content))
+        width, height = img.size
+        return width * height
+    except Exception:
+        return 0
+
+# Sort descending (high-quality first)
+image_urls.sort(key=estimate_quality, reverse=True)
+
+# -------------------------------------------------------------------
+# Prepare image array
+# -------------------------------------------------------------------
 images_np = []
+if thumbnail_url:
+    image_urls.insert(0, thumbnail_url)
 
-if not image_urls or len(image_urls) == 0:
+# -------------------------------------------------------------------
+# Fallback to static image if no URLs
+# -------------------------------------------------------------------
+if not image_urls:
     fallback_path = "/app/TrendFlicks.png"
     img = Image.open(fallback_path)
-    # Convert only if needed
     if img.mode != "RGB":
         img = img.convert("RGB")
 
-     # Ensure video_size is defined and valid
-    if "video_size" not in locals() or not video_size:
-        video_size = (1280, 720)  # fallback default
-    if not (isinstance(video_size, tuple)
-            and len(video_size) == 2
-            and all(isinstance(x, int) and x > 0 for x in video_size)):
+    if not video_size or not (
+        isinstance(video_size, tuple)
+        and len(video_size) == 2
+        and all(isinstance(x, int) and x > 0 for x in video_size)
+    ):
         raise ValueError(f"Invalid video_size: {video_size}")
 
-    # Resize safely
     img = img.resize(video_size, Image.LANCZOS)
-
-    # Append to list
     images_np.append(np.array(img))
-# -----------------------------
-# Image Download (stop after 6 valid images)
-# -----------------------------
+else:
+    # ----------------------------------------------------------------
+    # Download sorted images (unique by content hash)
+    # ----------------------------------------------------------------
+    downloaded_hashes = set()
+    for idx, url in enumerate(image_urls):
+        if len(images_np) >= max_images:
+            print(f"✅ Reached {max_images} valid images, skipping remaining URLs.")
+            break
 
-max_images = 4  # ideal number for 30–40 second videos
+        try:
+            print(f"Downloading image {idx+1}/{len(image_urls)}: {url}")
+            resp = requests.get(url, timeout=40)
+            resp.raise_for_status()
 
-for idx, url in enumerate(image_urls):
-    if len(images_np) >= max_images:
-        print(f"✅ Reached {max_images} valid images, skipping remaining URLs.")
-        break
+            # Deduplicate by image hash
+            img_hash = hashlib.md5(resp.content).hexdigest()
+            if img_hash in downloaded_hashes:
+                print(f"⚠️ Skipped duplicate image: {url}")
+                continue
+            downloaded_hashes.add(img_hash)
 
-    try:
-        print(f"Downloading image {idx+1}/{len(image_urls)}: {url}")
-        resp = requests.get(url, timeout=40)
-        resp.raise_for_status()
-        img = Image.open(BytesIO(resp.content)).convert("RGB").resize(video_size, Image.LANCZOS)
-        images_np.append(np.array(img))
-        print(f"✅ Loaded image {len(images_np)} / {max_images}")
-    except Exception as e:
-        print(f"⚠️ Failed to load {url}: {e}")
+            img = Image.open(BytesIO(resp.content)).convert("RGB").resize(video_size, Image.LANCZOS)
+            images_np.append(np.array(img))
+            print(f"✅ Loaded image {len(images_np)} / {max_images}")
+        except Exception as e:
+            print(f"⚠️ Failed to load {url}: {e}")
 
-# Fallback if no images
+# -------------------------------------------------------------------
+# Fallback: Try thumbnail if all failed
+# -------------------------------------------------------------------
 if not images_np:
     print("⚠️ All images failed to download. Trying thumbnail as fallback.")
     try:
@@ -471,14 +267,12 @@ if not images_np:
     except Exception as e:
         raise ValueError(f"❌ Failed to load even the thumbnail: {e}")
 
-# thumb_path = create_thumbnail_from_array(
-#     images_np=images_np,
-#     text=thumbnail_text,
-#     output_path=thumbnail_file,
-#     font_path="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # or any .ttf font
-#     font_size=25,
-#     position="center"
-# )
+thumb_path = create_thumbnail_from_array(
+    images_np=images_np,
+    text=thumbnail_text,
+    output_path=thumbnail_file,
+    font_path="/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-BoldItalic.ttf"
+)
 
 # If fewer than max_images, loop to reach target for smooth animation
 if len(images_np) < max_images:
@@ -555,46 +349,14 @@ def make_frame(t):
 animated_clip = VideoClip(make_frame, duration=total_duration)
 
 # -----------------------------
-# 5. Word-by-word popping text overlay
-# -----------------------------
-# words = tts_text.upper().split()
-# highlight_words = {"IMPORTANT", "ACTION", "VICTORY", "WIN", "BAD", "VIOLANCE"}
-# word_duration = video_duration / max(len(words), 1)
-# text_clips = []
-
-# for idx, word in enumerate(words):
-#     start_time = idx * word_duration
-#     end_time = start_time + word_duration
-#     if idx % 3 == 0 or word.strip(".,!?:;") in highlight_words:
-#         fontsize = 90
-#         color = "orange"
-#     else:
-#         fontsize = 70
-#         color = "white"
-
-#     txt_clip = TextClip(
-#         text=word,
-#         size=(1200, 1200),
-#         font="/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-BoldItalic.ttf",
-#         color=color,
-#         font_size=fontsize,
-#         method="caption"
-#     ).with_start(start_time).with_end(end_time).with_position(("center", "center"))
-
-#     text_clips.append(txt_clip)
-
-# animated_text_clip = CompositeVideoClip(text_clips, size=video_size).with_duration(video_duration)
-
-
-# -----------------------------
 # 5. Scrolling text overlay (MoviePy + PIL)
 # -----------------------------
 scroll_text = tts_text.upper()  # or join multiple texts if you have more
 font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Italic.ttf"
-font = ImageFont.truetype(font_path, 30)
+font = ImageFont.truetype(font_path, 35)
 
 # Wrap the text for readability
-lines = textwrap.wrap(scroll_text, width=32)
+lines = textwrap.wrap(scroll_text, width=40)
 
 # Create a tall transparent image with all lines
 img_w, img_h = video_size[0], 80 * len(lines)
@@ -669,11 +431,36 @@ if animated_text_clip.mask is None:
 
 final_clip = CompositeVideoClip([background_clip, animated_clip, animated_text_clip])
 final_clip = final_clip.with_audio(final_audio)
-final_clip.write_videofile(video_file, fps=fps,
+
+# 3. Create outro ImageClip using that same path
+outro_duration = 3  # seconds
+outro_clip = ImageClip(thumb_path, duration=outro_duration)
+outro_clip = outro_clip.resized(final_clip.size)
+
+# Optional fade
+# outro_clip = outro_clip.fadein(0.5).fadeout(0.5)
+# final_clip = final_clip.fadeout(0.5)
+
+# 4. Concatenate main video + outro
+final_with_outro = concatenate_videoclips([outro_clip,final_clip])
+
+
+final_with_outro.write_videofile(
+    video_file,
+    fps=fps,
     codec="libx264",
     audio_codec="aac",
-    bitrate="5000k",   # 5 Mbps for 1080p
+    bitrate="5000k",
     preset="medium",
-    threads=4)
+    threads=4
+)
+
+
+# final_clip.write_videofile(video_file, fps=fps,
+#     codec="libx264",
+#     audio_codec="aac",
+#     bitrate="5000k",   # 5 Mbps for 1080p
+#     preset="medium",
+#     threads=4)
 
 print(f"✅ Video created successfully with cinematic animation and TTS: {video_file}")
